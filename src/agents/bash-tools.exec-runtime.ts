@@ -32,12 +32,7 @@ import {
   markExited,
   tail,
 } from "./bash-process-registry.js";
-import {
-  buildDockerExecArgs,
-  chunkString,
-  clampWithDefault,
-  readEnvInt,
-} from "./bash-tools.shared.js";
+import { buildDockerExecArgs, clampWithDefault, readEnvInt } from "./bash-tools.shared.js";
 import { buildCursorPositionResponse, stripDsrRequests } from "./pty-dsr.js";
 import { getShellConfig, sanitizeBinaryOutput } from "./shell-utils.js";
 
@@ -119,6 +114,12 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = DEFAULT_EXEC_APPROVAL_TIMEOUT_MS;
 export const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = DEFAULT_APPROVAL_TIMEOUT_MS + 10_000;
 const DEFAULT_APPROVAL_RUNNING_NOTICE_MS = 10_000;
 const APPROVAL_SLUG_LENGTH = 8;
+export const DEFAULT_EXEC_UPDATE_THROTTLE_MS = clampWithDefault(
+  readEnvInt("OPENCLAW_EXEC_UPDATE_THROTTLE_MS"),
+  100,
+  0,
+  5_000,
+);
 
 export const execSchema = Type.Object({
   command: Type.String({ description: "Shell command to execute" }),
@@ -558,6 +559,8 @@ export async function runExecProcess(opts: {
   };
   addSession(session);
 
+  let updateTimer: NodeJS.Timeout | null = null;
+
   const emitUpdate = () => {
     if (!opts.onUpdate) {
       return;
@@ -577,6 +580,43 @@ export async function runExecProcess(opts: {
     });
   };
 
+  const clearScheduledUpdate = () => {
+    if (!updateTimer) {
+      return;
+    }
+    clearTimeout(updateTimer);
+    updateTimer = null;
+  };
+
+  const flushUpdate = () => {
+    clearScheduledUpdate();
+    emitUpdate();
+  };
+
+  const scheduleUpdate = () => {
+    if (!opts.onUpdate || updateTimer) {
+      return;
+    }
+    if (DEFAULT_EXEC_UPDATE_THROTTLE_MS <= 0) {
+      emitUpdate();
+      return;
+    }
+    updateTimer = setTimeout(() => {
+      updateTimer = null;
+      emitUpdate();
+    }, DEFAULT_EXEC_UPDATE_THROTTLE_MS);
+  };
+
+  const appendSanitizedOutput = (stream: "stdout" | "stderr", input: string) => {
+    if (!input) {
+      return;
+    }
+    for (let i = 0; i < input.length; i += 8 * 1024) {
+      appendOutput(session, stream, input.slice(i, i + 8 * 1024));
+    }
+    scheduleUpdate();
+  };
+
   const handleStdout = (data: string) => {
     const raw = data.toString();
     // Detect smkx/rmkx BEFORE sanitizeBinaryOutput strips ESC sequences.
@@ -587,18 +627,12 @@ export async function runExecProcess(opts: {
       session.cursorKeyMode = mode;
     }
     const str = sanitizeBinaryOutput(raw);
-    for (const chunk of chunkString(str)) {
-      appendOutput(session, "stdout", chunk);
-      emitUpdate();
-    }
+    appendSanitizedOutput("stdout", str);
   };
 
   const handleStderr = (data: string) => {
     const str = sanitizeBinaryOutput(data.toString());
-    for (const chunk of chunkString(str)) {
-      appendOutput(session, "stderr", chunk);
-      emitUpdate();
-    }
+    appendSanitizedOutput("stderr", str);
   };
 
   const timeoutMs =
@@ -751,6 +785,9 @@ export async function runExecProcess(opts: {
   const promise = managedRun
     .wait()
     .then(async (exit): Promise<ExecProcessOutcome> => {
+      if (updateTimer) {
+        flushUpdate();
+      }
       const durationMs = Date.now() - startedAt;
       const outcome = buildExecExitOutcome({
         exit,
@@ -775,6 +812,9 @@ export async function runExecProcess(opts: {
       return outcome;
     })
     .catch((err): ExecProcessOutcome => {
+      if (updateTimer) {
+        flushUpdate();
+      }
       markExited(session, null, null, "failed");
       maybeNotifyOnExit(session, "failed");
       return buildExecRuntimeErrorOutcome({
