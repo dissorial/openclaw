@@ -1,3 +1,5 @@
+import { getDefaultMediaLocalRoots } from "./local-roots.js";
+
 export type OutboundMediaReadFile = (filePath: string) => Promise<Buffer>;
 
 export type OutboundMediaAccess = {
@@ -24,7 +26,10 @@ export type OutboundMediaLoadOptions = {
 export function resolveOutboundMediaLocalRoots(
   mediaLocalRoots?: readonly string[],
 ): readonly string[] | undefined {
-  return mediaLocalRoots && mediaLocalRoots.length > 0 ? mediaLocalRoots : undefined;
+  if (!mediaLocalRoots || mediaLocalRoots.length === 0) {
+    return undefined;
+  }
+  return Array.from(new Set([...getDefaultMediaLocalRoots(), ...mediaLocalRoots]));
 }
 
 export function resolveOutboundMediaAccess(

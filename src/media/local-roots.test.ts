@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  appendLocalMediaParentRoots,
   getAgentScopedMediaLocalRoots,
   getAgentScopedMediaLocalRootsForSources,
   getDefaultMediaLocalRoots,
@@ -108,6 +109,106 @@ describe("local media roots", () => {
     });
   });
 
+  it("includes configured agent workspaces when agent context is missing", () => {
+    const stateDir = path.join("/tmp", "openclaw-missing-agent-media-roots-state");
+    const roots = withStateDir(stateDir, () =>
+      getAgentScopedMediaLocalRoots(
+        {
+          agents: {
+            defaults: {
+              workspace: "/data/default-workspace",
+            },
+            list: [
+              { id: "sprout", workspace: "/data/sprout" },
+              { id: "niko", workspace: "/data/niko" },
+            ],
+          },
+        },
+        undefined,
+      ),
+    );
+
+    expectNormalizedRootsContain(roots, [
+      path.join(stateDir, "media"),
+      path.join(stateDir, "workspace"),
+      path.join(stateDir, "sandboxes"),
+      "/data/default-workspace",
+      "/data/sprout",
+      "/data/niko",
+    ]);
+    expectNormalizedRootsExclude(roots, [path.join(stateDir, "agents")]);
+  });
+
+  it("includes configured agent workspaces and tmp dirs in default roots when config is available", () => {
+    const stateDir = path.join("/tmp", "openclaw-default-configured-media-roots-state");
+    const roots = withStateDir(stateDir, () =>
+      getDefaultMediaLocalRoots({
+        agents: {
+          defaults: {
+            workspace: "/data/default-workspace",
+          },
+          list: [
+            { id: "sprout", workspace: "/data/sprout" },
+            { id: "niko", workspace: "/data/niko" },
+          ],
+        },
+      }),
+    );
+
+    expectNormalizedRootsContain(roots, [
+      path.join(stateDir, "media"),
+      path.join(stateDir, "workspace"),
+      path.join(stateDir, "sandboxes"),
+      "/data/default-workspace",
+      "/data/sprout",
+      "/data/niko",
+      "/tmp/sprout",
+      "/tmp/niko",
+    ]);
+  });
+
+  it("falls back to configured agent workspaces when the requested agent workspace cannot be resolved", () => {
+    const stateDir = path.join("/tmp", "openclaw-unknown-agent-media-roots-state");
+    const roots = withStateDir(stateDir, () =>
+      getAgentScopedMediaLocalRoots(
+        {
+          agents: {
+            list: [{ id: "sprout", workspace: "/data/sprout" }],
+          },
+        },
+        "unknown",
+      ),
+    );
+
+    expectNormalizedRootsContain(roots, ["/data/sprout"]);
+    expectNormalizedRootsExclude(roots, [path.join(stateDir, "agents")]);
+  });
+
+  it("adds concrete parent roots for local media sources without widening to filesystem root", () => {
+    const picturesDir =
+      process.platform === "win32" ? "C:\\Users\\peter\\Pictures" : "/Users/peter/Pictures";
+    const moviesDir =
+      process.platform === "win32" ? "C:\\Users\\peter\\Movies" : "/Users/peter/Movies";
+
+    const roots = appendLocalMediaParentRoots(
+      ["/tmp/base"],
+      [
+        path.join(picturesDir, "photo.png"),
+        pathToFileURL(path.join(moviesDir, "clip.mp4")).href,
+        "https://example.com/remote.png",
+        "/top-level-file.png",
+      ],
+    );
+
+    expect(roots.map(normalizeHostPath)).toEqual(
+      expect.arrayContaining([
+        normalizeHostPath("/tmp/base"),
+        normalizeHostPath(picturesDir),
+        normalizeHostPath(moviesDir),
+      ]),
+    );
+    expect(roots.map(normalizeHostPath)).not.toContain(normalizeHostPath("/"));
+  });
   it.each([
     {
       name: "does not widen agent media roots for concrete local sources when workspaceOnly is disabled",
