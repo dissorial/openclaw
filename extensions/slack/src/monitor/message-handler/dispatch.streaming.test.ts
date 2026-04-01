@@ -3,6 +3,7 @@ import {
   isSlackStreamingEnabled,
   resolveSlackStreamingThreadHint,
   shouldEnableSlackPreviewStreaming,
+  shouldDeliverSlackReplyKind,
   shouldInitializeSlackDraftStream,
 } from "./dispatch.js";
 
@@ -99,6 +100,13 @@ describe("slack preview streaming eligibility", () => {
   });
 });
 
+describe("slack reply delivery kinds", () => {
+  it("suppresses tool replies but keeps block and final replies", () => {
+    expect(shouldDeliverSlackReplyKind("tool")).toBe(false);
+    expect(shouldDeliverSlackReplyKind("block")).toBe(true);
+    expect(shouldDeliverSlackReplyKind("final")).toBe(true);
+  });
+});
 describe("slack draft stream initialization", () => {
   it("stays off when preview streaming is disabled", () => {
     expect(

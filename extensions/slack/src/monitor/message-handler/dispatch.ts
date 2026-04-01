@@ -137,6 +137,9 @@ function shouldUseStreaming(params: {
   return true;
 }
 
+export function shouldDeliverSlackReplyKind(kind: "tool" | "block" | "final"): boolean {
+  return kind !== "tool";
+}
 export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessage) {
   const { ctx, account, message, route } = prepared;
   const cfg = ctx.cfg;
