@@ -90,13 +90,11 @@ describe("live model switch", () => {
     });
   });
 
-  it("prefers persisted runtime model fields ahead of session overrides", async () => {
+  it("returns null when no explicit live-switch override exists", async () => {
     state.loadSessionStoreMock.mockReturnValue({
       main: {
-        providerOverride: "anthropic",
-        modelOverride: "claude-opus-4-6",
-        modelProvider: "anthropic",
-        model: "claude-sonnet-4-6",
+        modelProvider: "amazon-bedrock",
+        model: "us.anthropic.claude-opus-4-6-v1",
       },
     });
 
@@ -107,15 +105,10 @@ describe("live model switch", () => {
         cfg: { session: { store: "/tmp/custom-store.json" } },
         sessionKey: "main",
         agentId: "reply",
-        defaultProvider: "openai",
-        defaultModel: "gpt-5.4",
+        defaultProvider: "amazon-bedrock",
+        defaultModel: "us.anthropic.claude-opus-4-6-v1",
       }),
-    ).toEqual({
-      provider: "anthropic",
-      model: "claude-sonnet-4-6",
-      authProfileId: undefined,
-      authProfileIdSource: undefined,
-    });
+    ).toBeNull();
   });
 
   it("queues a live switch only when an active run was aborted", async () => {
