@@ -184,7 +184,7 @@ describe("local media roots", () => {
     expectNormalizedRootsExclude(roots, [path.join(stateDir, "agents")]);
   });
 
-  it("adds concrete parent roots for local media sources without widening to filesystem root", () => {
+  it("keeps existing roots unchanged for arbitrary local media sources", () => {
     const picturesDir =
       process.platform === "win32" ? "C:\\Users\\peter\\Pictures" : "/Users/peter/Pictures";
     const moviesDir =
@@ -200,13 +200,9 @@ describe("local media roots", () => {
       ],
     );
 
-    expect(roots.map(normalizeHostPath)).toEqual(
-      expect.arrayContaining([
-        normalizeHostPath("/tmp/base"),
-        normalizeHostPath(picturesDir),
-        normalizeHostPath(moviesDir),
-      ]),
-    );
+    expect(roots.map(normalizeHostPath)).toEqual([normalizeHostPath("/tmp/base")]);
+    expect(roots.map(normalizeHostPath)).not.toContain(normalizeHostPath(picturesDir));
+    expect(roots.map(normalizeHostPath)).not.toContain(normalizeHostPath(moviesDir));
     expect(roots.map(normalizeHostPath)).not.toContain(normalizeHostPath("/"));
   });
   it.each([
