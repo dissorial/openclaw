@@ -190,6 +190,7 @@ export async function executeNodeHostCommand(
     );
     params.warnings.push(`⚠️ Obfuscated command detected: ${obfuscation.reasons.join("; ")}`);
   }
+  const approvalPromptsDisabled = hostAsk === "off";
   const requiresAsk =
     requiresExecApproval({
       ask: hostAsk,
@@ -197,8 +198,8 @@ export async function executeNodeHostCommand(
       analysisOk,
       allowlistSatisfied,
     }) ||
-    inlineEvalHit !== null ||
-    obfuscation.detected;
+    (!approvalPromptsDisabled && inlineEvalHit !== null) ||
+    (!approvalPromptsDisabled && obfuscation.detected);
   const invokeTimeoutMs = Math.max(
     10_000,
     (typeof params.timeoutSec === "number" ? params.timeoutSec : params.defaultTimeoutSec) * 1000 +

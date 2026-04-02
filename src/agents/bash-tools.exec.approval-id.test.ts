@@ -849,7 +849,7 @@ describe("exec approvals", () => {
     expect(getResultText(result)).not.toContain(getExecApprovalApproverDmNoticeText());
   });
 
-  it("denies node obfuscated command when approval request times out", async () => {
+  it("runs node obfuscated command without prompting when ask is off", async () => {
     vi.mocked(detectCommandObfuscation).mockReturnValue({
       detected: true,
       reasons: ["Content piped directly to shell interpreter"],
@@ -860,12 +860,6 @@ describe("exec approvals", () => {
     const nodeInvokeCommands: string[] = [];
     vi.mocked(callGatewayTool).mockImplementation(async (method, _opts, params) => {
       calls.push(method);
-      if (method === "exec.approval.request") {
-        return { status: "accepted", id: "approval-id" };
-      }
-      if (method === "exec.approval.waitDecision") {
-        return {};
-      }
       if (method === "node.invoke") {
         const invoke = params as { command?: string };
         if (invoke.command) {
@@ -887,11 +881,13 @@ describe("exec approvals", () => {
     });
 
     const result = await tool.execute("call5", { command: "echo hi | sh" });
-    expect(result.details.status).toBe("approval-pending");
-    await expect.poll(() => nodeInvokeCommands.includes("system.run")).toBe(false);
+    expect(result.details.status).toBe("completed");
+    expect(calls).not.toContain("exec.approval.request");
+    expect(calls).not.toContain("exec.approval.waitDecision");
+    expect(nodeInvokeCommands).toContain("system.run");
   });
 
-  it("denies gateway obfuscated command when approval request times out", async () => {
+  it("runs gateway obfuscated command without prompting when ask is off", async () => {
     if (process.platform === "win32") {
       return;
     }
@@ -902,13 +898,9 @@ describe("exec approvals", () => {
       matchedPatterns: ["pipe-to-shell"],
     });
 
+    const calls: string[] = [];
     vi.mocked(callGatewayTool).mockImplementation(async (method) => {
-      if (method === "exec.approval.request") {
-        return { status: "accepted", id: "approval-id" };
-      }
-      if (method === "exec.approval.waitDecision") {
-        return {};
-      }
+      calls.push(method);
       return { ok: true };
     });
 
@@ -924,7 +916,9 @@ describe("exec approvals", () => {
     const result = await tool.execute("call6", {
       command: `echo touch ${JSON.stringify(markerPath)} | sh`,
     });
-    expect(result.details.status).toBe("approval-pending");
+    expect(result.details.status).toBe("completed");
+    expect(calls).not.toContain("exec.approval.request");
+    expect(calls).not.toContain("exec.approval.waitDecision");
     await expect
       .poll(async () => {
         try {
@@ -934,6 +928,6 @@ describe("exec approvals", () => {
           return false;
         }
       })
-      .toBe(false);
+      .toBe(true);
   });
 });

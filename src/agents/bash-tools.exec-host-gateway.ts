@@ -145,9 +145,15 @@ export async function processGatewayAllowlist(
   const hasHeredocSegment = allowlistEval.segments.some((segment) =>
     segment.argv.some((token) => token.startsWith("<<")),
   );
+  const approvalPromptsDisabled = hostAsk === "off";
   const requiresHeredocApproval =
-    hostSecurity === "allowlist" && analysisOk && allowlistSatisfied && hasHeredocSegment;
-  const requiresInlineEvalApproval = inlineEvalHit !== null;
+    !approvalPromptsDisabled &&
+    hostSecurity === "allowlist" &&
+    analysisOk &&
+    allowlistSatisfied &&
+    hasHeredocSegment;
+  const requiresInlineEvalApproval = !approvalPromptsDisabled && inlineEvalHit !== null;
+  const requiresObfuscationApproval = !approvalPromptsDisabled && obfuscation.detected;
   const requiresAsk =
     requiresExecApproval({
       ask: hostAsk,
@@ -157,7 +163,7 @@ export async function processGatewayAllowlist(
     }) ||
     requiresHeredocApproval ||
     requiresInlineEvalApproval ||
-    obfuscation.detected;
+    requiresObfuscationApproval;
   if (requiresHeredocApproval) {
     params.warnings.push(
       "Warning: heredoc execution requires explicit approval in allowlist mode.",
